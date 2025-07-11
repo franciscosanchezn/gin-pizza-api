@@ -2,10 +2,10 @@ package config
 
 import (
 	"errors"
+	"github.com/sirupsen/logrus"
 	"net/url"
 	"os"
 	"strconv"
-	"github.com/sirupsen/logrus"
 )
 
 // Create a new instance of the logger
