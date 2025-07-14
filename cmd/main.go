@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	_ "github.com/franciscosanchezn/gin-pizza-api/docs" // Import generated docs
 	"github.com/franciscosanchezn/gin-pizza-api/internal/config"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/controllers"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/models"
@@ -9,7 +10,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
-	_ "github.com/franciscosanchezn/gin-pizza-api/docs" // Import generated docs
 	"github.com/swaggo/files"
 	"github.com/swaggo/gin-swagger"
 	"gorm.io/driver/sqlite"
