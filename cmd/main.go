@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	_ "github.com/franciscosanchezn/gin-pizza-api/docs" // Import generated docs
 	"github.com/franciscosanchezn/gin-pizza-api/internal/config"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/controllers"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/models"
@@ -9,6 +10,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
+	"github.com/swaggo/files"
+	"github.com/swaggo/gin-swagger"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"net/http"
@@ -21,6 +24,11 @@ var (
 	pizzaController controllers.PizzaController
 )
 
+// @title Pizza API
+// @version 1.0
+// @description A simple Pizza API
+// @host localhost:8080
+// @BasePath /
 func main() {
 	// Load environment variables
 	loadDotenvFile()
@@ -95,9 +103,30 @@ func setupDatabase(conf *config.Config) *gorm.DB {
 	// Migrate the schema
 	db.AutoMigrate(&models.Pizza{})
 
-	// Create
-	db.Create(&models.Pizza{Name: "Margherita", Price: 10.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Basil"}})
+	// Create only if is empty
+	var count int64
+	db.Model(&models.Pizza{}).Count(&count)
+	if count == 0 {
+		log.Info("Database is empty, seeding initial data")
+		seedDatabase()
+	} else {
+		log.Info("Database already seeded with initial data")
+	}
 	return db
+}
+
+// seedDatabase seeds the database with initial data
+func seedDatabase() {
+	log.Info("Seeding database with initial data")
+	pizzas := []models.Pizza{
+		{Name: "Margherita", Price: 10.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Basil"}},
+		{Name: "Pepperoni", Price: 12.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Pepperoni"}},
+		{Name: "Vegetarian", Price: 11.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Bell Peppers", "Olives"}},
+	}
+	for _, pizza := range pizzas {
+		db.Create(&pizza)
+	}
+	log.Info("Database seeded successfully")
 }
 
 // setupRouter initializes the Gin router and sets up the routes
@@ -122,11 +151,18 @@ func setupRoutes(router *gin.Engine) {
 	router.POST("/pizzas", pizzaController.CreatePizza)
 	router.PUT("/pizzas/:id", pizzaController.UpdatePizza)
 	router.DELETE("/pizzas/:id", pizzaController.DeletePizza)
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 }
 
 // healthCheckHandler handles the health check endpoint
-// It returns a JSON response with the service status and timestamp
+// @Summary Health check
+// @Description Check if the service is running
+// @Tags health
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Router /health [get]
 func healthCheckHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"status":    "healthy",
