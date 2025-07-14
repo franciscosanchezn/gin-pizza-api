@@ -3,11 +3,22 @@ package main
 import (
 	"fmt"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/config"
+	"github.com/franciscosanchezn/gin-pizza-api/internal/controllers"
+	"github.com/franciscosanchezn/gin-pizza-api/internal/models"
+	"github.com/franciscosanchezn/gin-pizza-api/internal/services"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 	"net/http"
 	"time"
+)
+
+var (
+	db              *gorm.DB
+	pizzaService    services.PizzaService
+	pizzaController controllers.PizzaController
 )
 
 func main() {
@@ -19,6 +30,13 @@ func main() {
 
 	// Load configuration
 	configuration := loadConfig()
+
+	// Initialize database connection
+	setupDatabase(configuration)
+
+	// Initialize services and controllers
+	pizzaService = services.NewPizzaService(db)
+	pizzaController = controllers.NewPizzaController(pizzaService)
 
 	// Initialize Gin router
 	var router *gin.Engine = setupRouter()
@@ -67,6 +85,21 @@ func loadConfig() *config.Config {
 	return conf
 }
 
+// setupDatabase initializes the database connection and returns a gorm.DB instance
+func setupDatabase(conf *config.Config) *gorm.DB {
+	// Database connection logic here
+	// This is a placeholder, actual implementation will depend on the database being used
+	var err error
+	db, err = gorm.Open(sqlite.Open("test.sqlite"), &gorm.Config{})
+	checkPanicErr(err)
+	// Migrate the schema
+	db.AutoMigrate(&models.Pizza{})
+
+	// Create
+	db.Create(&models.Pizza{Name: "Margherita", Price: 10.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Basil"}})
+	return db
+}
+
 // setupRouter initializes the Gin router and sets up the routes
 // It returns the configured router
 func setupRouter() *gin.Engine {
@@ -83,6 +116,13 @@ func setupRouter() *gin.Engine {
 func setupRoutes(router *gin.Engine) {
 	// Health check endpoint
 	router.GET("/health", healthCheckHandler)
+	// Pizza routes
+	router.GET("/pizzas", pizzaController.GetAllPizzas)
+	router.GET("/pizzas/:id", pizzaController.GetPizzaByID)
+	router.POST("/pizzas", pizzaController.CreatePizza)
+	router.PUT("/pizzas/:id", pizzaController.UpdatePizza)
+	router.DELETE("/pizzas/:id", pizzaController.DeletePizza)
+
 }
 
 // healthCheckHandler handles the health check endpoint
