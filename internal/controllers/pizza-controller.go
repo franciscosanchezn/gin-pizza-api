@@ -40,7 +40,7 @@ func NewPizzaController(service services.PizzaService) *controller {
 // @Produce json
 // @Success 200 {array} models.Pizza
 // @Failure 500 {object} map[string]string
-// @Router /pizzas [get]
+// @Router /api/v1/public/pizzas [get]
 func (c *controller) GetAllPizzas(ctx *gin.Context) {
 	pizzas, err := c.service.GetAllPizzas()
 	if err != nil {
@@ -60,7 +60,7 @@ func (c *controller) GetAllPizzas(ctx *gin.Context) {
 // @Success 200 {object} models.Pizza
 // @Failure 400 {object} map[string]string
 // @Failure 404 {object} map[string]string
-// @Router /pizzas/{id} [get]
+// @Router /api/v1/public/pizzas/{id} [get]
 func (c *controller) GetPizzaByID(ctx *gin.Context) {
 	id, existId := ctx.Params.Get("id")
 	if !existId {
@@ -91,7 +91,8 @@ func (c *controller) GetPizzaByID(ctx *gin.Context) {
 // @Success 201 {object} models.Pizza
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /pizzas [post]
+// @Security BearerAuth
+// @Router /api/v1/protected/admin/pizzas [post]
 func (c *controller) CreatePizza(ctx *gin.Context) {
 	var pizza models.Pizza
 	if err := ctx.ShouldBindJSON(&pizza); err != nil {
@@ -118,7 +119,8 @@ func (c *controller) CreatePizza(ctx *gin.Context) {
 // @Success 200 {object} models.Pizza
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /pizzas/{id} [put]
+// @Security BearerAuth
+// @Router /api/v1/protected/admin/pizzas/{id} [put]
 func (c *controller) UpdatePizza(ctx *gin.Context) {
 	var pizza models.Pizza
 	if err := ctx.ShouldBindJSON(&pizza); err != nil {
@@ -144,7 +146,8 @@ func (c *controller) UpdatePizza(ctx *gin.Context) {
 // @Success 204
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
-// @Router /pizzas/{id} [delete]
+// @Security BearerAuth
+// @Router /api/v1/protected/admin/pizzas/{id} [delete]
 func (c *controller) DeletePizza(ctx *gin.Context) {
 	id, existId := ctx.Params.Get("id")
 	if !existId {

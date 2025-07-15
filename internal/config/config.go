@@ -2,10 +2,12 @@ package config
 
 import (
 	"errors"
-	"github.com/sirupsen/logrus"
+	"fmt"
 	"net/url"
 	"os"
 	"strconv"
+
+	"github.com/sirupsen/logrus"
 )
 
 // Create a new instance of the logger
@@ -46,6 +48,31 @@ type Config struct {
 	JWTSecret string `json:"jwt_secret"`
 }
 
+// String returns a string representation of Config with sensitive data masked
+func (c *Config) String() string {
+	return fmt.Sprintf("Config{Port: %d, Host: %s, DatabaseURL: %s, DBName: %s, DBUser: %s, DBPassword: [REDACTED], LogLevel: %s, JWTSecret: [REDACTED]}",
+		c.Port, c.Host, maskDatabaseURL(c.DatabaseURL), c.DBName, c.DBUser, c.LogLevel)
+}
+
+// maskDatabaseURL masks password in database URL
+func maskDatabaseURL(dbURL string) string {
+	if dbURL == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(dbURL)
+	if err != nil {
+		return "[REDACTED_INVALID_URL]"
+	}
+
+	if parsed.User != nil {
+		// Replace password with [REDACTED]
+		parsed.User = url.UserPassword(parsed.User.Username(), "[REDACTED]")
+	}
+
+	return parsed.String()
+}
+
 // LoadConfig read the proper configuration from environment variables and returns a Config struct
 // It also validates formats like DatabaseURL and JWTSecret
 // Returns an error if any required environment variable is missing or invalid
@@ -76,7 +103,7 @@ func LoadConfig() (*Config, error) {
 		LogLevel:    GetEnvWithDefault("LOG_LEVEL", "info"),
 		JWTSecret:   GetEnvWithDefault("JWT_SECRET", "secret"),
 	}
-	log.Infof("Configuration loaded: %+v", config)
+	log.Infof("Configuration loaded: %s", config.String())
 	return config, nil
 }
 

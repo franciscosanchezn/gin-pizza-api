@@ -2,26 +2,30 @@ package main
 
 import (
 	"fmt"
+	"net/http"
+	"time"
+
 	_ "github.com/franciscosanchezn/gin-pizza-api/docs" // Import generated docs
 	"github.com/franciscosanchezn/gin-pizza-api/internal/config"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/controllers"
+	"github.com/franciscosanchezn/gin-pizza-api/internal/middleware"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/models"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/services"
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
 	"github.com/swaggo/files"
 	"github.com/swaggo/gin-swagger"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"net/http"
-	"time"
 )
 
 var (
 	db              *gorm.DB
 	pizzaService    services.PizzaService
 	pizzaController controllers.PizzaController
+	configuration   *config.Config
 )
 
 // @title Pizza API
@@ -29,6 +33,10 @@ var (
 // @description A simple Pizza API
 // @host localhost:8080
 // @BasePath /
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Type "Bearer" followed by a space and JWT token.
 func main() {
 	// Load environment variables
 	loadDotenvFile()
@@ -37,7 +45,10 @@ func main() {
 	setUpLogger()
 
 	// Load configuration
-	configuration := loadConfig()
+	configuration = loadConfig()
+
+	// Set JWT secret from configuration
+	middleware.SetJWTSecret(configuration.JWTSecret)
 
 	// Initialize database connection
 	setupDatabase(configuration)
@@ -141,18 +152,74 @@ func setupRouter() *gin.Engine {
 	return router
 }
 
+// Add this handler for testing.
+// TODO remove when authorization service is implemented
+func generateTestTokenHandler(c *gin.Context) {
+	// Create test claims
+	claims := jwt.MapClaims{
+		"user": "test-user-123",
+		"role": "admin",
+		"exp":  time.Now().Add(time.Hour * 24).Unix(), // 24 hours
+		"iat":  time.Now().Unix(),
+	}
+
+	// Create token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(configuration.JWTSecret))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"token":      tokenString,
+		"type":       "Bearer",
+		"expires_in": 86400, // 24 hours in seconds
+	})
+}
+
 // setupRoutes defines the routes for the Gin router
 func setupRoutes(router *gin.Engine) {
 	// Health check endpoint
 	router.GET("/health", healthCheckHandler)
-	// Pizza routes
-	router.GET("/pizzas", pizzaController.GetAllPizzas)
-	router.GET("/pizzas/:id", pizzaController.GetPizzaByID)
-	router.POST("/pizzas", pizzaController.CreatePizza)
-	router.PUT("/pizzas/:id", pizzaController.UpdatePizza)
-	router.DELETE("/pizzas/:id", pizzaController.DeletePizza)
-	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
+	// Test token generation endpoint
+	router.GET("/test-token", generateTestTokenHandler)
+	// Pizza routes
+	v1 := router.Group("/api/v1")
+	{
+		publicApi := v1.Group("/public")
+		{
+			publicApi.GET("/pizzas", pizzaController.GetAllPizzas)
+			publicApi.GET("/pizzas/:id", pizzaController.GetPizzaByID)
+		}
+
+		// Authentication routes (public but for auth purposes)
+		// auth := v1.Group("/auth")
+		// {
+		//     // auth.POST("/login", authController.Login)     // Future
+		//     // auth.POST("/register", authController.Register) // Future
+		// }
+
+		// Protected routes (requires JWT authentication)
+		// This group will use the JWTAuth middleware
+		// and will require a valid JWT token to access
+		protectedApi := v1.Group("/protected")
+		protectedApi.Use(middleware.JWTAuth())
+		{
+			adminApi := protectedApi.Group("/admin")
+			adminApi.Use(middleware.RequireRole("admin"))
+			{
+				adminApi.POST("/pizzas", pizzaController.CreatePizza)
+				adminApi.PUT("/pizzas/:id", pizzaController.UpdatePizza)
+				adminApi.DELETE("/pizzas/:id", pizzaController.DeletePizza)
+			}
+
+		}
+	}
+
+	// Swagger documentation
+	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }
 
 // healthCheckHandler handles the health check endpoint
