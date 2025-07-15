@@ -26,29 +26,7 @@ info:
   title: Pizza API
   version: "1.0"
 paths:
-  /pizzas:
-    get:
-      consumes:
-      - application/json
-      description: Get a list of all pizzas
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/models.Pizza'
-            type: array
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Get all pizzas
-      tags:
-      - pizzas
+  /api/v1/protected/admin/pizzas:
     post:
       consumes:
       - application/json
@@ -79,10 +57,12 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Create a new pizza
       tags:
       - pizzas
-  /pizzas/{id}:
+  /api/v1/protected/admin/pizzas/{id}:
     delete:
       consumes:
       - application/json
@@ -110,39 +90,9 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Delete a pizza
-      tags:
-      - pizzas
-    get:
-      consumes:
-      - application/json
-      description: Get a single pizza by its ID
-      parameters:
-      - description: Pizza ID
-        in: path
-        name: id
-        required: true
-        type: integer
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/models.Pizza'
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Get pizza by ID
       tags:
       - pizzas
     put:
@@ -180,7 +130,88 @@ paths:
             additionalProperties:
               type: string
             type: object
+      security:
+      - BearerAuth: []
       summary: Update a pizza
       tags:
       - pizzas
+  /api/v1/public/pizzas:
+    get:
+      consumes:
+      - application/json
+      description: Get a list of all pizzas
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Pizza'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get all pizzas
+      tags:
+      - pizzas
+  /api/v1/public/pizzas/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Get a single pizza by its ID
+      parameters:
+      - description: Pizza ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Pizza'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get pizza by ID
+      tags:
+      - pizzas
+  /health:
+    get:
+      consumes:
+      - application/json
+      description: Check if the service is running
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Health check
+      tags:
+      - health
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
 swagger: "2.0"
