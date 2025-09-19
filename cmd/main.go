@@ -113,6 +113,9 @@ func setupDatabase(conf *config.Config) *gorm.DB {
 	checkPanicErr(err)
 	// Migrate the schema
 	db.AutoMigrate(&models.Pizza{})
+	// Add OAuth models
+	db.AutoMigrate(&models.OAuthClient{}, &models.OAuthCode{}, &models.OAuthToken{})
+
 
 	// Create only if is empty
 	var count int64
