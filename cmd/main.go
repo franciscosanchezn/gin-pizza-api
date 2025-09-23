@@ -11,6 +11,7 @@ import (
 	"github.com/franciscosanchezn/gin-pizza-api/internal/middleware"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/models"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/services"
+	"github.com/franciscosanchezn/gin-pizza-api/internal/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/joho/godotenv"
@@ -47,11 +48,8 @@ func main() {
 	// Load configuration
 	configuration = loadConfig()
 
-	// Set JWT secret from configuration
-	middleware.SetJWTSecret(configuration.JWTSecret)
-
 	// Initialize database connection
-	setupDatabase(configuration)
+	setupDatabase()
 
 	// Initialize services and controllers
 	pizzaService = services.NewPizzaService(db)
@@ -105,7 +103,7 @@ func loadConfig() *config.Config {
 }
 
 // setupDatabase initializes the database connection and returns a gorm.DB instance
-func setupDatabase(conf *config.Config) *gorm.DB {
+func setupDatabase() *gorm.DB {
 	// Database connection logic here
 	// This is a placeholder, actual implementation will depend on the database being used
 	var err error
@@ -183,6 +181,9 @@ func generateTestTokenHandler(c *gin.Context) {
 
 // setupRoutes defines the routes for the Gin router
 func setupRoutes(router *gin.Engine) {
+	// Initialize OAuth service
+	oauthService := auth.NewOAuthService(db, configuration.JWTSecret)
+
 	// Health check endpoint
 	router.GET("/health", healthCheckHandler)
 
@@ -198,17 +199,17 @@ func setupRoutes(router *gin.Engine) {
 		}
 
 		// Authentication routes (public but for auth purposes)
-		// auth := v1.Group("/auth")
-		// {
-		//     // auth.POST("/login", authController.Login)     // Future
-		//     // auth.POST("/register", authController.Register) // Future
-		// }
+		auth := v1.Group("/oauth")
+		{
+		    auth.POST("/token", oauthService.HandleToken)
+			auth.GET("/authorize", oauthService.HandleAuthorize)
+		} 
 
 		// Protected routes (requires JWT authentication)
 		// This group will use the JWTAuth middleware
 		// and will require a valid JWT token to access
 		protectedApi := v1.Group("/protected")
-		protectedApi.Use(middleware.JWTAuth())
+		protectedApi.Use(middleware.OAuth2Auth([]byte(configuration.JWTSecret)))
 		{
 			adminApi := protectedApi.Group("/admin")
 			adminApi.Use(middleware.RequireRole("admin"))

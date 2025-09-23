@@ -18,16 +18,13 @@ func NewGormClientStore(db *gorm.DB) *GormClientStore {
 }
 
 func (s *GormClientStore) GetByID(ctx context.Context, id string) (oauth2.ClientInfo, error) {
-	var client internalmodels.OAuthClient
-	if err := s.db.Where("id = ?", id).First(&client).Error; err != nil {
-		return nil, err
-	}
+    var client internalmodels.OAuthClient
+    if err := s.db.Where("id = ?", id).First(&client).Error; err != nil {
+        return nil, err
+    }
 
-	return &models.Client{
-		ID:     client.ID,
-		Secret: client.Secret,
-		Domain: client.Domain,
-	}, nil
+    // Return our custom OAuthClient which implements ClientPasswordVerifier
+    return &client, nil
 }
 
 type GormTokenStore struct {
@@ -74,7 +71,7 @@ func (s *GormTokenStore) GetByAccess(ctx context.Context, access string) (oauth2
 		UserID:           *token.UserID,
 		Access:           token.AccessToken,
 		Refresh:          *token.RefreshToken,
-		AccessExpiresIn:  token.ExpiresAt.Sub(time.Now()),
+		AccessExpiresIn:  time.Until(token.ExpiresAt),
 		Scope:            token.Scopes,
 	}, nil
 }
@@ -90,7 +87,7 @@ func (s *GormTokenStore) GetByRefresh(ctx context.Context, refresh string) (oaut
 		UserID:           *token.UserID,
 		Access:           token.AccessToken,
 		Refresh:          *token.RefreshToken,
-		AccessExpiresIn:  token.ExpiresAt.Sub(time.Now()),
+		AccessExpiresIn:  time.Until(token.ExpiresAt),
 		Scope:            token.Scopes,
 	}, nil
 }

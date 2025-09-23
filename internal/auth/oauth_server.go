@@ -31,6 +31,10 @@ func NewOAuthService(db *gorm.DB, jwtSecret string) *OAuthService {
 	srv.SetAllowGetAccessRequest(true)
 	srv.SetClientInfoHandler(server.ClientFormHandler)
 
+	// The OAuth2 v4.5.4 library automatically detects that our OAuthClient
+    // implements ClientPasswordVerifier and uses the VerifyPassword method
+    // No additional configuration needed!
+
 	return &OAuthService{
 		server: srv,
 		db:     db,
