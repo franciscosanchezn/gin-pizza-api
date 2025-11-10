@@ -6,18 +6,17 @@ import (
 	"time"
 
 	_ "github.com/franciscosanchezn/gin-pizza-api/docs" // Import generated docs
+	"github.com/franciscosanchezn/gin-pizza-api/internal/auth"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/config"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/controllers"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/middleware"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/models"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/services"
-	"github.com/franciscosanchezn/gin-pizza-api/internal/auth"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
-	"github.com/swaggo/files"
-	"github.com/swaggo/gin-swagger"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -112,8 +111,11 @@ func setupDatabase() *gorm.DB {
 	// Migrate the schema
 	db.AutoMigrate(&models.Pizza{})
 	// Add OAuth models
-	db.AutoMigrate(&models.OAuthClient{}, &models.OAuthCode{}, &models.OAuthToken{})
-
+	db.AutoMigrate(
+		&models.User{},
+		&models.Pizza{},
+		&models.OAuthClient{},
+	)
 
 	// Create only if is empty
 	var count int64
@@ -130,10 +132,33 @@ func setupDatabase() *gorm.DB {
 // seedDatabase seeds the database with initial data
 func seedDatabase() {
 	log.Info("Seeding database with initial data")
+
+	// Create a system/default user for seeded pizzas
+	systemUser := models.User{
+		Email: "system@pizza.com",
+		Name:  "System User",
+		Role:  "admin",
+	}
+
+	// Check if system user already exists
+	var existingUser models.User
+	if err := db.Where("email = ?", systemUser.Email).First(&existingUser).Error; err == nil {
+		// User exists, use that ID
+		systemUser.ID = existingUser.ID
+		log.Info("System user already exists, using existing ID")
+	} else {
+		// Create new system user
+		if err := db.Create(&systemUser).Error; err != nil {
+			log.Errorf("Failed to create system user: %v", err)
+			return
+		}
+		log.Infof("✓ System user created: system@pizza.com")
+	}
+
 	pizzas := []models.Pizza{
-		{Name: "Margherita", Price: 10.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Basil"}},
-		{Name: "Pepperoni", Price: 12.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Pepperoni"}},
-		{Name: "Vegetarian", Price: 11.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Bell Peppers", "Olives"}},
+		{Name: "Margherita", Price: 10.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Basil"}, CreatedBy: systemUser.ID},
+		{Name: "Pepperoni", Price: 12.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Pepperoni"}, CreatedBy: systemUser.ID},
+		{Name: "Vegetarian", Price: 11.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Bell Peppers", "Olives"}, CreatedBy: systemUser.ID},
 	}
 	for _, pizza := range pizzas {
 		db.Create(&pizza)
@@ -153,32 +178,6 @@ func setupRouter() *gin.Engine {
 	return router
 }
 
-// Add this handler for testing.
-// TODO remove when authorization service is implemented
-func generateTestTokenHandler(c *gin.Context) {
-	// Create test claims
-	claims := jwt.MapClaims{
-		"user": "test-user-123",
-		"role": "admin",
-		"exp":  time.Now().Add(time.Hour * 24).Unix(), // 24 hours
-		"iat":  time.Now().Unix(),
-	}
-
-	// Create token
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte(configuration.JWTSecret))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"token":      tokenString,
-		"type":       "Bearer",
-		"expires_in": 86400, // 24 hours in seconds
-	})
-}
-
 // setupRoutes defines the routes for the Gin router
 func setupRoutes(router *gin.Engine) {
 	// Initialize OAuth service
@@ -187,8 +186,6 @@ func setupRoutes(router *gin.Engine) {
 	// Health check endpoint
 	router.GET("/health", healthCheckHandler)
 
-	// Test token generation endpoint
-	router.GET("/test-token", generateTestTokenHandler)
 	// Pizza routes
 	v1 := router.Group("/api/v1")
 	{
@@ -198,12 +195,15 @@ func setupRoutes(router *gin.Engine) {
 			publicApi.GET("/pizzas/:id", pizzaController.GetPizzaByID)
 		}
 
-		// Authentication routes (public but for auth purposes)
-		auth := v1.Group("/oauth")
+		// Initialize client controller
+		clientService := services.NewClientService(db)
+		clientController := controllers.NewClientController(clientService)
+
+		// OAuth2 routes remain separate
+		oauthRoutes := v1.Group("/oauth")
 		{
-		    auth.POST("/token", oauthService.HandleToken)
-			auth.GET("/authorize", oauthService.HandleAuthorize)
-		} 
+			oauthRoutes.POST("/token", oauthService.HandleToken)
+		}
 
 		// Protected routes (requires JWT authentication)
 		// This group will use the JWTAuth middleware
@@ -214,9 +214,15 @@ func setupRoutes(router *gin.Engine) {
 			adminApi := protectedApi.Group("/admin")
 			adminApi.Use(middleware.RequireRole("admin"))
 			{
+				// Pizza operations
 				adminApi.POST("/pizzas", pizzaController.CreatePizza)
 				adminApi.PUT("/pizzas/:id", pizzaController.UpdatePizza)
 				adminApi.DELETE("/pizzas/:id", pizzaController.DeletePizza)
+
+				// OAuth2 Client Management - admin only
+				adminApi.POST("/clients", clientController.CreateClient)
+				adminApi.GET("/clients", clientController.ListClients)
+				adminApi.DELETE("/clients/:id", clientController.DeleteClient)
 			}
 
 		}

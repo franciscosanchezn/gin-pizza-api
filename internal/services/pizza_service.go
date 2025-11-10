@@ -7,8 +7,8 @@ import (
 
 // PizzaService provides methods to interact with the pizza database
 type PizzaService interface {
-	// GetAllPizzas retrieves all pizzas from the database
-	GetAllPizzas() ([]models.Pizza, error)
+	// GetAllPizzas retrieves all pizzas from the database with optional filtering
+	GetAllPizzas(createdBy string, name string) ([]models.Pizza, error)
 	// GetPizzaByID retrieves a pizza by its ID
 	GetPizzaByID(id int) (models.Pizza, error)
 	// CreatePizza creates a new pizza in the database
@@ -29,9 +29,19 @@ func NewPizzaService(db *gorm.DB) PizzaService {
 	return &pizzaService{db: db}
 }
 
-func (s *pizzaService) GetAllPizzas() ([]models.Pizza, error) {
+func (s *pizzaService) GetAllPizzas(createdBy string, name string) ([]models.Pizza, error) {
 	var pizzas []models.Pizza
-	if err := s.db.Find(&pizzas).Error; err != nil {
+	query := s.db
+
+	// Apply filters if provided
+	if createdBy != "" {
+		query = query.Where("created_by = ?", createdBy)
+	}
+	if name != "" {
+		query = query.Where("name LIKE ?", "%"+name+"%")
+	}
+
+	if err := query.Find(&pizzas).Error; err != nil {
 		return nil, err
 	}
 	return pizzas, nil

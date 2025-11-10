@@ -40,6 +40,11 @@ func (c *OAuthClient) IsPublic() bool {
 }
 
 func (c *OAuthClient) GetUserID() string {
+	// For client credentials flow, the OAuth2 library requires a non-empty UserID
+	// If UserID is not set (0/NULL), return the client ID as fallback
+	if c.UserID == 0 {
+		return c.ID
+	}
 	return fmt.Sprint(c.UserID)
 }
 

@@ -4,6 +4,10 @@ definitions:
     properties:
       created_at:
         type: string
+      created_by:
+        type: integer
+      creator:
+        $ref: '#/definitions/models.User'
       description:
         type: string
       id:
@@ -17,6 +21,21 @@ definitions:
       price:
         type: number
       updated_at:
+        type: string
+    type: object
+  models.User:
+    properties:
+      createdAt:
+        type: string
+      email:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      role:
+        type: string
+      updatedAt:
         type: string
     type: object
 host: localhost:8080
@@ -84,6 +103,18 @@ paths:
             additionalProperties:
               type: string
             type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:
@@ -124,6 +155,18 @@ paths:
             additionalProperties:
               type: string
             type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
         "500":
           description: Internal Server Error
           schema:
@@ -135,6 +178,105 @@ paths:
       summary: Update a pizza
       tags:
       - pizzas
+  /api/v1/protected/clients:
+    get:
+      consumes:
+      - application/json
+      description: Get all OAuth2 clients owned by the authenticated user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of clients
+          schema:
+            items:
+              type: object
+            type: array
+        "500":
+          description: Failed to retrieve clients
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List OAuth2 clients
+      tags:
+      - OAuth2 Clients
+    post:
+      consumes:
+      - application/json
+      description: Create a new OAuth2 client for API access
+      parameters:
+      - description: Client details
+        in: body
+        name: client
+        required: true
+        schema:
+          properties:
+            domain:
+              type: string
+            grant_types:
+              type: string
+            name:
+              type: string
+            redirect_uri:
+              type: string
+            scopes:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Client created with client_id and client_secret
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Client creation failed
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create OAuth2 client
+      tags:
+      - OAuth2 Clients
+  /api/v1/protected/clients/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete an OAuth2 client owned by the authenticated user
+      parameters:
+      - description: Client ID
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: Client deleted successfully
+        "404":
+          description: Client not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete OAuth2 client
+      tags:
+      - OAuth2 Clients
   /api/v1/public/pizzas:
     get:
       consumes:
@@ -208,6 +350,59 @@ paths:
       summary: Health check
       tags:
       - health
+  /oauth/token:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: Obtain an access token using client credentials or authorization
+        code grant
+      parameters:
+      - description: 'Grant type: client_credentials or authorization_code'
+        in: formData
+        name: grant_type
+        required: true
+        type: string
+      - description: Client ID
+        in: formData
+        name: client_id
+        required: true
+        type: string
+      - description: Client Secret
+        in: formData
+        name: client_secret
+        required: true
+        type: string
+      - description: Authorization code (required for authorization_code grant)
+        in: formData
+        name: code
+        type: string
+      - description: Redirect URI (required for authorization_code grant)
+        in: formData
+        name: redirect_uri
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Token Endpoint
+      tags:
+      - OAuth2
 securityDefinitions:
   BearerAuth:
     description: Type "Bearer" followed by a space and JWT token.

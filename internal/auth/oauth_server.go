@@ -1,9 +1,9 @@
 package auth
 
 import (
-	"github.com/go-oauth2/oauth2/v4/generates"
 	"github.com/go-oauth2/oauth2/v4/manage"
 	"github.com/go-oauth2/oauth2/v4/server"
+	"github.com/go-oauth2/oauth2/v4/store"
 	"github.com/golang-jwt/jwt/v5"
 	"gorm.io/gorm"
 )
@@ -16,12 +16,13 @@ type OAuthService struct {
 func NewOAuthService(db *gorm.DB, jwtSecret string) *OAuthService {
 	manager := manage.NewDefaultManager()
 
-	// Use JWT for access tokens
-	manager.MapAccessGenerate(generates.NewJWTAccessGenerate("", []byte(jwtSecret), jwt.SigningMethodHS512))
+	// Use our custom JWT generator that includes the UserID and Role claims
+	// Pass the database connection so it can fetch user information
+	manager.MapAccessGenerate(NewCustomJWTAccessGenerate([]byte(jwtSecret), jwt.SigningMethodHS512, db))
 
-	// Configure token store
-	tokenStore := NewGormTokenStore(db)
-	manager.MustTokenStorage(tokenStore, nil)
+	// Use in-memory token store (required by OAuth2 library even with stateless JWTs)
+	tokenStore, _ := store.NewMemoryTokenStore()
+	manager.MapTokenStorage(tokenStore)
 
 	// Configure client store
 	clientStore := NewGormClientStore(db)
@@ -32,8 +33,8 @@ func NewOAuthService(db *gorm.DB, jwtSecret string) *OAuthService {
 	srv.SetClientInfoHandler(server.ClientFormHandler)
 
 	// The OAuth2 v4.5.4 library automatically detects that our OAuthClient
-    // implements ClientPasswordVerifier and uses the VerifyPassword method
-    // No additional configuration needed!
+	// implements ClientPasswordVerifier and uses the VerifyPassword method
+	// No additional configuration needed!
 
 	return &OAuthService{
 		server: srv,
