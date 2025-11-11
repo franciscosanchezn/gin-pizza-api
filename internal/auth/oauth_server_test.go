@@ -39,16 +39,27 @@ func TestJWTTokenGeneration(t *testing.T) {
 	oauthService := NewOAuthService(db, "test-jwt-secret-key-32-characters")
 	require.NotNil(t, oauthService)
 
+	// Create a test user first (required for token generation)
+	testUser := &models.User{
+		Email: "test3@example.com",
+		Name:  "Test User 3",
+		Role:  "admin",
+	}
+	err := db.Create(testUser).Error
+	require.NoError(t, err)
+
 	// Generate bcrypt hash for the test client secret
 	plainSecret := "test_secret"
 	hashedSecret, err := bcrypt.GenerateFromPassword([]byte(plainSecret), bcrypt.DefaultCost)
 	require.NoError(t, err)
 
 	client := &models.OAuthClient{
-		ID:     "test_client",
-		Secret: string(hashedSecret), // Store bcrypt hash
-		Domain: "http://localhost",
-		Scopes: "read,write",
+		ID:         "test_client",
+		Secret:     string(hashedSecret), // Store bcrypt hash
+		Domain:     "http://localhost",
+		Scopes:     "read,write",
+		UserID:     testUser.ID,          // Associate with user
+		GrantTypes: "client_credentials",
 	}
 	err = db.Create(client).Error
 	require.NoError(t, err)
@@ -58,7 +69,7 @@ func TestJWTTokenGeneration(t *testing.T) {
 	tokenRequest := &oauth2.TokenGenerateRequest{
 		ClientID:     "test_client",
 		ClientSecret: "test_secret",
-		UserID:       "test_user",
+		UserID:       "",       // Will be populated from client's UserID
 		Scope:        "read,write",
 	}
 

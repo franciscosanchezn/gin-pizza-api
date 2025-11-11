@@ -21,16 +21,27 @@ func TestClientCredentialsFlow(t *testing.T) {
 	oauthService := NewOAuthService(db, "test-jwt-secret-key-32-characters")
 	require.NotNil(t, oauthService)
 
+	// Create a test user first (required for token generation)
+	testUser := &models.User{
+		Email: "test@example.com",
+		Name:  "Test User",
+		Role:  "admin",
+	}
+	err := db.Create(testUser).Error
+	require.NoError(t, err)
+
 	// Test with bcrypt-hashed secret (production scenario)
 	// Client secrets are hashed before storage for security
 	hashedSecret, _ := bcrypt.GenerateFromPassword([]byte("test_secret"), bcrypt.DefaultCost)
 	client := &models.OAuthClient{
-		ID:     "test_client_id",
-		Secret: string(hashedSecret), // bcrypt hash stored in database
-		Domain: "http://localhost:8080",
-		Scopes: "read,write",
+		ID:         "test_client_id",
+		Secret:     string(hashedSecret), // bcrypt hash stored in database
+		Domain:     "http://localhost:8080",
+		Scopes:     "read,write",
+		UserID:     testUser.ID, // Associate client with user
+		GrantTypes: "client_credentials",
 	}
-	err := db.Create(client).Error
+	err = db.Create(client).Error
 	require.NoError(t, err)
 
 	// Setup Gin for testing
@@ -75,15 +86,26 @@ func TestClientCredentialsInvalidSecret(t *testing.T) {
 	oauthService := NewOAuthService(db, "test-jwt-secret-key-32-characters")
 	require.NotNil(t, oauthService)
 
+	// Create a test user first (required for token generation)
+	testUser := &models.User{
+		Email: "test2@example.com",
+		Name:  "Test User 2",
+		Role:  "admin",
+	}
+	err := db.Create(testUser).Error
+	require.NoError(t, err)
+
 	// Create test client
 	hashedSecret, _ := bcrypt.GenerateFromPassword([]byte("correct_secret"), bcrypt.DefaultCost)
 	client := &models.OAuthClient{
-		ID:     "test_client_id",
-		Secret: string(hashedSecret),
-		Domain: "http://localhost:8080",
-		Scopes: "read,write",
+		ID:         "test_client_id",
+		Secret:     string(hashedSecret),
+		Domain:     "http://localhost:8080",
+		Scopes:     "read,write",
+		UserID:     testUser.ID, // Associate client with user
+		GrantTypes: "client_credentials",
 	}
-	err := db.Create(client).Error
+	err = db.Create(client).Error
 	require.NoError(t, err)
 
 	gin.SetMode(gin.TestMode)

@@ -64,7 +64,9 @@ func main() {
 
 	// Start the server
 	log.Infof("Starting server on %s:%d", configuration.Host, configuration.Port)
-	router.Run(fmt.Sprintf("%v:%d", configuration.Host, configuration.Port))
+	if err := router.Run(fmt.Sprintf("%v:%d", configuration.Host, configuration.Port)); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
 }
 
 // checkPanicErr checks if an error occurred and panics if it did
@@ -114,13 +116,17 @@ func setupDatabase() *gorm.DB {
 	db, err = gorm.Open(sqlite.Open("test.sqlite"), &gorm.Config{})
 	checkPanicErr(err)
 	// Migrate the schema
-	db.AutoMigrate(&models.Pizza{})
+	if err := db.AutoMigrate(&models.Pizza{}); err != nil {
+		log.Fatalf("Failed to migrate Pizza schema: %v", err)
+	}
 	// Add OAuth models
-	db.AutoMigrate(
+	if err := db.AutoMigrate(
 		&models.User{},
 		&models.Pizza{},
 		&models.OAuthClient{},
-	)
+	); err != nil {
+		log.Fatalf("Failed to migrate OAuth schemas: %v", err)
+	}
 
 	// Create only if is empty
 	var count int64
