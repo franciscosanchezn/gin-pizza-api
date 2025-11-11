@@ -40,6 +40,5 @@ package-lock.json
 package.json
 .task/
 docs/TERRAFORM_PROVIDER.md
-docs/docs.go
 docs/swagger.json
 docs/swagger.yaml
