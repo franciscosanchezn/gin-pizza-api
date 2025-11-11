@@ -58,7 +58,7 @@ func TestJWTTokenGeneration(t *testing.T) {
 		Secret:     string(hashedSecret), // Store bcrypt hash
 		Domain:     "http://localhost",
 		Scopes:     "read,write",
-		UserID:     testUser.ID,          // Associate with user
+		UserID:     testUser.ID, // Associate with user
 		GrantTypes: "client_credentials",
 	}
 	err = db.Create(client).Error
@@ -69,7 +69,7 @@ func TestJWTTokenGeneration(t *testing.T) {
 	tokenRequest := &oauth2.TokenGenerateRequest{
 		ClientID:     "test_client",
 		ClientSecret: "test_secret",
-		UserID:       "",       // Will be populated from client's UserID
+		UserID:       "", // Will be populated from client's UserID
 		Scope:        "read,write",
 	}
 
