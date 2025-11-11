@@ -288,12 +288,29 @@ curl -X POST http://localhost:8080/api/v1/oauth/token \
 
 ### Using the Access Token
 
-Include the token in the `Authorization` header:
+- Enter: `Bearer YOUR_ACCESS_TOKEN`
+- Click "Authorize"
+- Test endpoints directly from the UI
+
+### Additional Documentation
+
+For developers building integrations with this API:
+
+- **[API Contract Documentation](docs/API_CONTRACT.md)** - Comprehensive API specifications including versioning, authentication, idempotency guarantees, error codes, and concurrency behavior
+- **[Terraform Provider Developer Guide](docs/TERRAFORM_PROVIDER.md)** - Complete guide for building a Terraform provider including OAuth flow, resource mapping, error handling, and testing strategies
+- **[Kubernetes Deployment Guide](docs/KUBERNETES.md)** - Instructions for deploying the API to microk8s with HTTPS/TLS configuration
+
+### Regenerating Swagger Documentation
+
+After adding or modifying endpoints:
 
 ```bash
-curl -X GET http://localhost:8080/api/v1/protected/admin/clients \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+swag init -g cmd/main.go
 ```
+
+### API Endpoints Reference
+
+````
 
 ### Token Characteristics
 
@@ -302,6 +319,85 @@ curl -X GET http://localhost:8080/api/v1/protected/admin/clients \
 - **Stateless:** No server-side storage
 - **Expiration:** Configurable (default: 1 hour)
 - **Contains:** Client ID, scopes, expiration time
+
+### JWT Token Structure
+
+The JWT tokens issued by the API contain the following claims:
+
+```json
+{
+  "uid": "1",
+  "role": "admin",
+  "aud": "client-id",
+  "scope": "read write",
+  "exp": 1699632000,
+  "iat": 1699628400
+}
+```
+
+**Claim Descriptions:**
+
+- **`uid`** (User ID): The ID of the User record associated with the OAuth client. This value is used for creator attribution (see Pizza.CreatedBy field).
+- **`role`** (User Role): The role of the associated user (`admin` or `user`). Determines permissions for protected endpoints.
+- **`aud`** (Audience): The OAuth client ID that requested the token. Used for token validation.
+- **`scope`** (Token Scopes): Space-separated list of scopes granted to the token (e.g., `read write`). Currently informational.
+- **`exp`** (Expiration Time): Unix timestamp indicating when the token expires.
+- **`iat`** (Issued At): Unix timestamp indicating when the token was issued.
+
+**Creator Attribution Flow:**
+
+When a client creates a pizza, the `uid` claim from their JWT token is extracted and stored in the `Pizza.CreatedBy` field. This creates an audit trail linking resources to their creator:
+
+```
+JWT Token → uid claim → User.ID → Pizza.CreatedBy
+```
+
+This enables ownership-based authorization (e.g., only the creator can delete their pizza).
+
+### OAuth Client Service Account Model
+
+OAuth clients in this API are **service accounts** rather than end-user authentication mechanisms. Here's how the relationship works:
+
+```
+Terraform Provider → OAuth Client → User (with role) → Permissions
+                                         ↓
+                                    Pizza.CreatedBy
+```
+
+**Key Relationships:**
+
+1. **OAuth Client Record** (`OAuthClient` model):
+   - Stores `ClientID`, `ClientSecret`, and links to a `User` via `UserID`
+   - Acts as a service account identity for machine-to-machine communication
+
+2. **User Record** (`User` model):
+   - Each OAuth client is associated with exactly one User
+   - The User's `Role` field determines the client's permissions (`admin` or `user`)
+   - Multiple OAuth clients can share the same User (different service accounts, same permission set)
+
+3. **Resource Ownership**:
+   - All pizzas created by a client are "owned" by the client's associated User
+   - The `Pizza.CreatedBy` field references the `User.ID`, not the `OAuthClient.ID`
+
+**Why This Model?**
+
+- **Persistence:** User records provide a stable identity for resource ownership
+- **Role-Based Access Control (RBAC):** Leverage User roles for permission management
+- **Audit Trail:** Track which service account (via User) created each resource
+- **Flexibility:** Multiple clients can act as the same user, or have distinct user identities
+
+**Example:**
+
+```bash
+# Create a User (admin role)
+User ID: 1, Username: "terraform-user", Role: "admin"
+
+# Create an OAuth Client linked to that User
+Client ID: "terraform-client", Client Secret: "secret123", User ID: 1
+
+# When the client authenticates, the JWT contains uid=1
+# Any pizzas created have CreatedBy=1, owned by "terraform-user"
+```
 
 ---
 
@@ -506,6 +602,35 @@ curl -X GET http://localhost:8080/api/v1/protected/admin/clients \
   "error": "Pizza not found"
 }
 ```
+
+### Idempotency Behavior
+
+Understanding idempotency is crucial for Terraform provider development and reliable API integration. Here's the idempotency guarantee for each endpoint:
+
+| Endpoint | Method | Idempotent? | Description |
+|----------|--------|-------------|-------------|
+| **Create Pizza** | `POST /api/v1/protected/admin/pizzas` | ❌ **No** | Submitting the same request multiple times will create multiple pizzas with different IDs. No duplicate detection is performed. |
+| **Get Pizza** | `GET /api/v1/public/pizzas/:id` | ✅ **Yes** | Naturally idempotent - same result every time. |
+| **List Pizzas** | `GET /api/v1/public/pizzas` | ✅ **Yes** | Naturally idempotent - returns current state. |
+| **Update Pizza** | `PUT /api/v1/protected/admin/pizzas/:id` | ✅ **Yes** | Sending the same update data multiple times produces no additional changes after the first update. |
+| **Delete Pizza** | `DELETE /api/v1/protected/admin/pizzas/:id` | ✅ **Yes** | First delete succeeds (200 OK). Subsequent deletes return 404 Not Found (not 500 error), which is idempotent behavior. |
+
+**Implications for Terraform Provider State Management:**
+
+1. **Non-Idempotent Create Operations:**
+   - The provider must track resource IDs in state to avoid creating duplicates on re-apply
+   - Consider implementing client-side duplicate detection by checking existing resources
+   - Future enhancement: Add `external_id` field to the Pizza model for provider-managed correlation
+
+2. **Update and Delete Operations:**
+   - Safe to retry on transient errors (network timeouts, 5xx errors)
+   - Provider should handle 404 responses gracefully on delete (treat as already deleted)
+
+3. **Recommended Retry Strategy:**
+   - **Create:** Do not retry automatically (risk of duplicates). Let Terraform state handle this.
+   - **Read:** Safe to retry on transient errors
+   - **Update:** Safe to retry on transient errors
+   - **Delete:** Safe to retry on transient errors; treat 404 as success
 
 ---
 

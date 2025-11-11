@@ -21,6 +21,11 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	// APIVersion is the current version of the API
+	APIVersion = "1.0.0"
+)
+
 var (
 	db              *gorm.DB
 	pizzaService    services.PizzaService
@@ -232,18 +237,38 @@ func setupRoutes(router *gin.Engine) {
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }
 
+// HealthResponse represents the health check response
+type HealthResponse struct {
+	Status    string `json:"status" example:"healthy"`
+	Version   string `json:"version" example:"1.0.0"`
+	Database  string `json:"database" example:"connected"`
+	Timestamp string `json:"timestamp" example:"2025-11-10T12:34:56Z"`
+}
+
 // healthCheckHandler handles the health check endpoint
 // @Summary Health check
-// @Description Check if the service is running
+// @Description Check if the service is running and database connectivity
 // @Tags health
 // @Accept json
 // @Produce json
-// @Success 200 {object} map[string]string
+// @Success 200 {object} HealthResponse
 // @Router /health [get]
 func healthCheckHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"status":    "healthy",
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-		"service":   "gin-pizza-api",
-	})
+	// Check database connectivity
+	dbStatus := "connected"
+	sqlDB, err := db.DB()
+	if err != nil {
+		dbStatus = "disconnected"
+	} else if err := sqlDB.Ping(); err != nil {
+		dbStatus = "disconnected"
+	}
+
+	response := HealthResponse{
+		Status:    "healthy",
+		Version:   APIVersion,
+		Database:  dbStatus,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	c.JSON(http.StatusOK, response)
 }
