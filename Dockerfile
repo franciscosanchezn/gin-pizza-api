@@ -21,10 +21,12 @@ RUN go mod download
 # Copy the source code into the container
 COPY . .
 
+# Install build dependencies for SQLite
+RUN apt-get update && apt-get install -y gcc libc6-dev && rm -rf /var/lib/apt/lists/*
+
 # Compile the Go application
-# CGO_ENABLED=0 disables cgo, GOOS=linux sets the target OS to Linux
-# The output binary will be named gin-pizza-api
-RUN CGO_ENABLED=0 GOOS=linux go build -o /gin-pizza-api cmd/main.go
+# CGO must be enabled for go-sqlite3 to work
+RUN CGO_ENABLED=1 GOOS=linux go build -o /gin-pizza-api cmd/main.go
 
 EXPOSE 8080
 
