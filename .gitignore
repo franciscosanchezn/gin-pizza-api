@@ -33,3 +33,12 @@ go.work.sum
 
 # Sqlite database file
 *.sqlite
+node_modules/
+.tasks/
+bin/
+package-lock.json
+package.json
+.task/
+docs/TERRAFORM_PROVIDER.md
+docs/swagger.json
+docs/swagger.yaml

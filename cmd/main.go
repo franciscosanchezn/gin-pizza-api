@@ -6,19 +6,24 @@ import (
 	"time"
 
 	_ "github.com/franciscosanchezn/gin-pizza-api/docs" // Import generated docs
+	"github.com/franciscosanchezn/gin-pizza-api/internal/auth"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/config"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/controllers"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/middleware"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/models"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/services"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
-	"github.com/swaggo/files"
-	"github.com/swaggo/gin-swagger"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+)
+
+const (
+	// APIVersion is the current version of the API
+	APIVersion = "1.0.0"
 )
 
 var (
@@ -47,11 +52,8 @@ func main() {
 	// Load configuration
 	configuration = loadConfig()
 
-	// Set JWT secret from configuration
-	middleware.SetJWTSecret(configuration.JWTSecret)
-
 	// Initialize database connection
-	setupDatabase(configuration)
+	setupDatabase()
 
 	// Initialize services and controllers
 	pizzaService = services.NewPizzaService(db)
@@ -62,7 +64,9 @@ func main() {
 
 	// Start the server
 	log.Infof("Starting server on %s:%d", configuration.Host, configuration.Port)
-	router.Run(fmt.Sprintf("%v:%d", configuration.Host, configuration.Port))
+	if err := router.Run(fmt.Sprintf("%v:%d", configuration.Host, configuration.Port)); err != nil {
+		log.Fatalf("Failed to start server: %v", err)
+	}
 }
 
 // checkPanicErr checks if an error occurred and panics if it did
@@ -105,14 +109,24 @@ func loadConfig() *config.Config {
 }
 
 // setupDatabase initializes the database connection and returns a gorm.DB instance
-func setupDatabase(conf *config.Config) *gorm.DB {
+func setupDatabase() *gorm.DB {
 	// Database connection logic here
 	// This is a placeholder, actual implementation will depend on the database being used
 	var err error
 	db, err = gorm.Open(sqlite.Open("test.sqlite"), &gorm.Config{})
 	checkPanicErr(err)
 	// Migrate the schema
-	db.AutoMigrate(&models.Pizza{})
+	if err := db.AutoMigrate(&models.Pizza{}); err != nil {
+		log.Fatalf("Failed to migrate Pizza schema: %v", err)
+	}
+	// Add OAuth models
+	if err := db.AutoMigrate(
+		&models.User{},
+		&models.Pizza{},
+		&models.OAuthClient{},
+	); err != nil {
+		log.Fatalf("Failed to migrate OAuth schemas: %v", err)
+	}
 
 	// Create only if is empty
 	var count int64
@@ -129,10 +143,33 @@ func setupDatabase(conf *config.Config) *gorm.DB {
 // seedDatabase seeds the database with initial data
 func seedDatabase() {
 	log.Info("Seeding database with initial data")
+
+	// Create a system/default user for seeded pizzas
+	systemUser := models.User{
+		Email: "system@pizza.com",
+		Name:  "System User",
+		Role:  "admin",
+	}
+
+	// Check if system user already exists
+	var existingUser models.User
+	if err := db.Where("email = ?", systemUser.Email).First(&existingUser).Error; err == nil {
+		// User exists, use that ID
+		systemUser.ID = existingUser.ID
+		log.Info("System user already exists, using existing ID")
+	} else {
+		// Create new system user
+		if err := db.Create(&systemUser).Error; err != nil {
+			log.Errorf("Failed to create system user: %v", err)
+			return
+		}
+		log.Infof("✓ System user created: system@pizza.com")
+	}
+
 	pizzas := []models.Pizza{
-		{Name: "Margherita", Price: 10.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Basil"}},
-		{Name: "Pepperoni", Price: 12.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Pepperoni"}},
-		{Name: "Vegetarian", Price: 11.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Bell Peppers", "Olives"}},
+		{Name: "Margherita", Price: 10.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Basil"}, CreatedBy: systemUser.ID},
+		{Name: "Pepperoni", Price: 12.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Pepperoni"}, CreatedBy: systemUser.ID},
+		{Name: "Vegetarian", Price: 11.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Bell Peppers", "Olives"}, CreatedBy: systemUser.ID},
 	}
 	for _, pizza := range pizzas {
 		db.Create(&pizza)
@@ -152,39 +189,14 @@ func setupRouter() *gin.Engine {
 	return router
 }
 
-// Add this handler for testing.
-// TODO remove when authorization service is implemented
-func generateTestTokenHandler(c *gin.Context) {
-	// Create test claims
-	claims := jwt.MapClaims{
-		"user": "test-user-123",
-		"role": "admin",
-		"exp":  time.Now().Add(time.Hour * 24).Unix(), // 24 hours
-		"iat":  time.Now().Unix(),
-	}
-
-	// Create token
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte(configuration.JWTSecret))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not generate token"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"token":      tokenString,
-		"type":       "Bearer",
-		"expires_in": 86400, // 24 hours in seconds
-	})
-}
-
 // setupRoutes defines the routes for the Gin router
 func setupRoutes(router *gin.Engine) {
+	// Initialize OAuth service
+	oauthService := auth.NewOAuthService(db, configuration.JWTSecret)
+
 	// Health check endpoint
 	router.GET("/health", healthCheckHandler)
 
-	// Test token generation endpoint
-	router.GET("/test-token", generateTestTokenHandler)
 	// Pizza routes
 	v1 := router.Group("/api/v1")
 	{
@@ -194,25 +206,34 @@ func setupRoutes(router *gin.Engine) {
 			publicApi.GET("/pizzas/:id", pizzaController.GetPizzaByID)
 		}
 
-		// Authentication routes (public but for auth purposes)
-		// auth := v1.Group("/auth")
-		// {
-		//     // auth.POST("/login", authController.Login)     // Future
-		//     // auth.POST("/register", authController.Register) // Future
-		// }
+		// Initialize client controller
+		clientService := services.NewClientService(db)
+		clientController := controllers.NewClientController(clientService)
+
+		// OAuth2 routes remain separate
+		oauthRoutes := v1.Group("/oauth")
+		{
+			oauthRoutes.POST("/token", oauthService.HandleToken)
+		}
 
 		// Protected routes (requires JWT authentication)
 		// This group will use the JWTAuth middleware
 		// and will require a valid JWT token to access
 		protectedApi := v1.Group("/protected")
-		protectedApi.Use(middleware.JWTAuth())
+		protectedApi.Use(middleware.OAuth2Auth([]byte(configuration.JWTSecret)))
 		{
 			adminApi := protectedApi.Group("/admin")
 			adminApi.Use(middleware.RequireRole("admin"))
 			{
+				// Pizza operations
 				adminApi.POST("/pizzas", pizzaController.CreatePizza)
 				adminApi.PUT("/pizzas/:id", pizzaController.UpdatePizza)
 				adminApi.DELETE("/pizzas/:id", pizzaController.DeletePizza)
+
+				// OAuth2 Client Management - admin only
+				adminApi.POST("/clients", clientController.CreateClient)
+				adminApi.GET("/clients", clientController.ListClients)
+				adminApi.DELETE("/clients/:id", clientController.DeleteClient)
 			}
 
 		}
@@ -222,18 +243,38 @@ func setupRoutes(router *gin.Engine) {
 	router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }
 
+// HealthResponse represents the health check response
+type HealthResponse struct {
+	Status    string `json:"status" example:"healthy"`
+	Version   string `json:"version" example:"1.0.0"`
+	Database  string `json:"database" example:"connected"`
+	Timestamp string `json:"timestamp" example:"2025-11-10T12:34:56Z"`
+}
+
 // healthCheckHandler handles the health check endpoint
 // @Summary Health check
-// @Description Check if the service is running
+// @Description Check if the service is running and database connectivity
 // @Tags health
 // @Accept json
 // @Produce json
-// @Success 200 {object} map[string]string
+// @Success 200 {object} HealthResponse
 // @Router /health [get]
 func healthCheckHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"status":    "healthy",
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-		"service":   "gin-pizza-api",
-	})
+	// Check database connectivity
+	dbStatus := "connected"
+	sqlDB, err := db.DB()
+	if err != nil {
+		dbStatus = "disconnected"
+	} else if err := sqlDB.Ping(); err != nil {
+		dbStatus = "disconnected"
+	}
+
+	response := HealthResponse{
+		Status:    "healthy",
+		Version:   APIVersion,
+		Database:  dbStatus,
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	c.JSON(http.StatusOK, response)
 }
