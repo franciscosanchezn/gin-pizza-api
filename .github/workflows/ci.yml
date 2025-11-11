@@ -1,0 +1,83 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ "main", "feat/**" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24.5'
+        cache: true
+
+    - name: Install dependencies
+      run: go mod download
+
+    - name: Run unit tests with race detector
+      run: go test -v -race -coverprofile=coverage.out ./...
+
+    - name: Build application
+      run: go build -v -o bin/pizza-api cmd/main.go
+
+    - name: Setup test database and dev client
+      run: |
+        # Start server temporarily to initialize database
+        timeout 5s go run cmd/main.go > /tmp/server-init.log 2>&1 || true
+        sleep 2
+        
+        # Create dev OAuth client for integration tests
+        go run scripts/create_dev_client.go
+        
+        # Clean up
+        pkill -f pizza-api || true
+
+    - name: Run integration tests
+      run: |
+        chmod +x scripts/test-api.sh
+        ./scripts/test-api.sh
+
+    - name: Upload test logs on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-logs
+        path: /tmp/pizza-api.log
+        retention-days: 7
+
+    - name: Upload coverage to Codecov (optional)
+      if: success()
+      uses: codecov/codecov-action@v4
+      with:
+        files: ./coverage.out
+        flags: unittests
+        fail_ci_if_error: false
+
+  lint:
+    name: Lint Code
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.24.5'
+
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v3
+      with:
+        version: latest
+        args: --timeout=5m
