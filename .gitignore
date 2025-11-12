@@ -42,3 +42,7 @@ package.json
 docs/TERRAFORM_PROVIDER.md
 docs/swagger.json
 docs/swagger.yaml
+
+# Kubernetes - Private deployment script and docs (local microk8s only)
+scripts/deploy-k8s.sh
+docs/KUBERNETES.md

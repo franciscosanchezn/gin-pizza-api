@@ -51,9 +51,4 @@ spec:
           timeoutSeconds: 2
           successThreshold: 1
           failureThreshold: 3
-        volumeMounts:
-        - name: data
-          mountPath: /data
-      volumes:
-      - name: data
-        emptyDir: {}  # Data will be lost on pod deletion (acceptable for demo)
+      # Note: No volumes needed - using external PostgreSQL database
