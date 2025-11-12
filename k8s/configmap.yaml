@@ -7,4 +7,14 @@ data:
   APP_HOST: "0.0.0.0"
   APP_PORT: "8080"
   LOG_LEVEL: "info"
-  DB_PATH: "/data/pizza.db"
+  
+  # Database Configuration (PostgreSQL)
+  DB_DRIVER: "postgres"
+  DB_HOST: "postgres"
+  DB_PORT: "5432"
+  DB_USER: "postgres"
+  DB_NAME: "pizza_api"
+  DB_SSLMODE: "disable"
+  
+  # Bootstrap OAuth Client (for automatic provisioning)
+  BOOTSTRAP_CLIENT_ID: "admin-client"

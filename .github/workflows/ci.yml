@@ -11,6 +11,24 @@ jobs:
     name: Build and Test
     runs-on: ubuntu-latest
     
+    strategy:
+      matrix:
+        db: [sqlite, postgres]
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pizza_api
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -25,24 +43,20 @@ jobs:
       run: go mod download
 
     - name: Run unit tests with race detector
-      run: go test -v -race -coverprofile=coverage.out ./...
+      run: go test -v -race -coverprofile=coverage-${{ matrix.db }}.out ./...
 
     - name: Build application
       run: go build -v -o bin/pizza-api cmd/main.go
 
-    - name: Setup test database and dev client
-      run: |
-        # Start server temporarily to initialize database
-        timeout 5s go run cmd/main.go > /tmp/server-init.log 2>&1 || true
-        sleep 2
-        
-        # Create dev OAuth client for integration tests
-        go run scripts/create_dev_client.go
-        
-        # Clean up
-        pkill -f pizza-api || true
-
-    - name: Run integration tests
+    - name: Run integration tests (${{ matrix.db }})
+      env:
+        DB_DRIVER: ${{ matrix.db }}
+        DB_HOST: localhost
+        DB_PORT: 5432
+        DB_USER: postgres
+        DB_PASSWORD: postgres
+        DB_NAME: pizza_api
+        DB_SSLMODE: disable
       run: |
         chmod +x scripts/test-api.sh
         ./scripts/test-api.sh
@@ -51,7 +65,7 @@ jobs:
       if: failure()
       uses: actions/upload-artifact@v4
       with:
-        name: test-logs
+        name: test-logs-${{ matrix.db }}
         path: /tmp/pizza-api.log
         retention-days: 7
 
@@ -59,8 +73,8 @@ jobs:
       if: success()
       uses: codecov/codecov-action@v4
       with:
-        files: ./coverage.out
-        flags: unittests
+        files: ./coverage-${{ matrix.db }}.out
+        flags: unittests-${{ matrix.db }}
         fail_ci_if_error: false
 
   lint:
