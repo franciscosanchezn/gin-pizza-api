@@ -110,7 +110,7 @@ func main() {
 func getUserIDForRole(db *gorm.DB, role string) uint {
 	var user User
 	email := fmt.Sprintf("%s@pizza.com", role)
-	
+
 	// Try to find existing user
 	if err := db.Where("email = ?", email).First(&user).Error; err == nil {
 		fmt.Printf("Found existing user: %s (ID: %d, Role: %s)\n", user.Email, user.ID, user.Role)
@@ -119,9 +119,9 @@ func getUserIDForRole(db *gorm.DB, role string) uint {
 
 	// Create new user
 	user = User{
-		Email: email,
-		Name:  fmt.Sprintf("%s User", role),
-		Role:  role,
+		Email:     email,
+		Name:      fmt.Sprintf("%s User", role),
+		Role:      role,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
