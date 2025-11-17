@@ -287,8 +287,9 @@ func seedDatabase() {
 		db.Create(&pizza)
 	}
 
-	// Create development OAuth client for local testing
+	// Create development OAuth clients for local testing
 	createDevOAuthClient(systemUser.ID)
+	createUserOAuthClient(regularUser.ID)
 
 	log.Info("Database seeded successfully")
 }
@@ -329,6 +330,44 @@ func createDevOAuthClient(userID uint) {
 		"client_id":     clientID,
 		"client_secret": clientSecret,
 	}).Info("✓ Development OAuth client created (for testing only)")
+}
+
+// createUserOAuthClient creates a user-client for USER role testing
+func createUserOAuthClient(userID uint) {
+	clientID := "user-client"
+	clientSecret := "user-secret-123"
+
+	// Check if user-client already exists
+	var existing models.OAuthClient
+	if err := db.Where("id = ?", clientID).First(&existing).Error; err == nil {
+		log.Info("User OAuth client already exists")
+		return
+	}
+
+	// Create user-client
+	hashedSecret, err := bcrypt.GenerateFromPassword([]byte(clientSecret), bcrypt.DefaultCost)
+	if err != nil {
+		log.WithError(err).Error("Failed to hash user client secret")
+		return
+	}
+
+	userClient := models.OAuthClient{
+		ID:     clientID,
+		Secret: string(hashedSecret),
+		Name:   "User Test Client",
+		UserID: userID,
+		Scopes: "read write",
+	}
+
+	if err := db.Create(&userClient).Error; err != nil {
+		log.WithError(err).Error("Failed to create user OAuth client")
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"client_id":     clientID,
+		"client_secret": clientSecret,
+	}).Info("✓ User OAuth client created (for testing USER role)")
 }
 
 // setupRouter initializes the Gin router and sets up the routes

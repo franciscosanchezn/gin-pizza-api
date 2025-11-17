@@ -350,11 +350,7 @@ test_pass "Confirmed pizza #$PIZZA_ID no longer exists"
 # ============================================================================
 print_section "Step 10: User Role Pizza Lifecycle"
 
-# First, ensure user client exists
-test_info "Ensuring user-role OAuth client exists..."
-go run scripts/create_dev_client.go --role=user > /dev/null 2>&1 || true
-
-# Get user token
+# Get user token (user-client is seeded by seedDatabase in main.go)
 test_info "Acquiring OAuth token for USER role..."
 USER_TOKEN_RESPONSE=$(curl -sf -X POST $BASE_URL/api/v1/oauth/token \
   -d "grant_type=client_credentials" \
@@ -364,7 +360,7 @@ USER_TOKEN_RESPONSE=$(curl -sf -X POST $BASE_URL/api/v1/oauth/token \
 USER_TOKEN=$(echo $USER_TOKEN_RESPONSE | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
 
 if [ -z "$USER_TOKEN" ] || [ "$USER_TOKEN" == "null" ]; then
-    test_fail "Failed to get USER token"
+    test_fail "Failed to get USER token. User OAuth client should be seeded automatically."
 fi
 test_pass "USER token acquired"
 test_info "User token: ${USER_TOKEN:0:30}..."
