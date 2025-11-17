@@ -197,7 +197,7 @@ print_section "Step 4: Create New Pizza (Admin Auth Required)"
 PIZZA_NAME="Test Pizza $(date +%s)"
 test_info "Creating pizza: $PIZZA_NAME"
 
-CREATE_RESPONSE=$(curl -sf -X POST $BASE_URL/api/v1/protected/admin/pizzas \
+CREATE_RESPONSE=$(curl -sf -X POST $BASE_URL/api/v1/pizzas \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
@@ -276,7 +276,7 @@ test_info "Updating pizza #$PIZZA_ID..."
 test_info "New name: $UPDATED_NAME"
 test_info "New price: \$$UPDATED_PRICE"
 
-UPDATE_RESPONSE=$(curl -sf -X PUT $BASE_URL/api/v1/protected/admin/pizzas/$PIZZA_ID \
+UPDATE_RESPONSE=$(curl -sf -X PUT $BASE_URL/api/v1/pizzas/$PIZZA_ID \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
@@ -328,7 +328,7 @@ test_info "Price: \$$VERIFIED_PRICE"
 print_section "Step 9: Delete Pizza"
 
 test_info "Deleting pizza #$PIZZA_ID..."
-DELETE_RESPONSE=$(curl -sf -X DELETE $BASE_URL/api/v1/protected/admin/pizzas/$PIZZA_ID \
+DELETE_RESPONSE=$(curl -sf -X DELETE $BASE_URL/api/v1/pizzas/$PIZZA_ID \
   -H "Authorization: Bearer $TOKEN")
 
 if [ $? -ne 0 ]; then
@@ -344,6 +344,99 @@ if curl -sf $BASE_URL/api/v1/public/pizzas/$PIZZA_ID > /dev/null 2>&1; then
 fi
 
 test_pass "Confirmed pizza #$PIZZA_ID no longer exists"
+
+# ============================================================================
+# STEP 10: USER ROLE PIZZA LIFECYCLE
+# ============================================================================
+print_section "Step 10: User Role Pizza Lifecycle"
+
+# Get user token (user-client is seeded by seedDatabase in main.go)
+test_info "Acquiring OAuth token for USER role..."
+USER_TOKEN_RESPONSE=$(curl -sf -X POST $BASE_URL/api/v1/oauth/token \
+  -d "grant_type=client_credentials" \
+  -d "client_id=user-client" \
+  -d "client_secret=user-secret-123")
+
+USER_TOKEN=$(echo $USER_TOKEN_RESPONSE | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+
+if [ -z "$USER_TOKEN" ] || [ "$USER_TOKEN" == "null" ]; then
+    test_fail "Failed to get USER token. User OAuth client should be seeded automatically."
+fi
+test_pass "USER token acquired"
+test_info "User token: ${USER_TOKEN:0:30}..."
+
+# Create pizza as user
+USER_PIZZA_NAME="User Pizza $(date +%s)"
+test_info "Creating pizza as USER: $USER_PIZZA_NAME"
+
+USER_PIZZA_RESPONSE=$(curl -sf -X POST $BASE_URL/api/v1/pizzas \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"name\": \"$USER_PIZZA_NAME\",
+    \"description\": \"Pizza created by user role\",
+    \"ingredients\": [\"mozzarella\", \"tomato\"],
+    \"price\": 15.99
+  }")
+
+USER_PIZZA_ID=$(echo $USER_PIZZA_RESPONSE | grep -o '"id":[0-9]*' | head -1 | cut -d':' -f2)
+
+if [ -z "$USER_PIZZA_ID" ]; then
+    test_fail "USER failed to create pizza"
+fi
+test_pass "USER created pizza with ID: $USER_PIZZA_ID"
+
+# User updates own pizza (200 OK expected)
+test_info "USER updating own pizza #$USER_PIZZA_ID..."
+USER_UPDATE=$(curl -sf -w "\n%{http_code}" -X PUT $BASE_URL/api/v1/pizzas/$USER_PIZZA_ID \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"name\": \"Updated $USER_PIZZA_NAME\",
+    \"price\": 17.99,
+    \"ingredients\": [\"mozzarella\", \"tomato\", \"basil\"]
+  }")
+
+UPDATE_HTTP_CODE=$(echo "$USER_UPDATE" | tail -n1)
+if [ "$UPDATE_HTTP_CODE" != "200" ]; then
+    test_fail "USER failed to update own pizza (HTTP $UPDATE_HTTP_CODE)"
+fi
+test_pass "USER successfully updated own pizza"
+
+# User tries to update admin's pizza (403 Forbidden expected)
+test_info "USER attempting to update admin's pizza (should fail)..."
+ADMIN_PIZZA_ID=1  # Seeded pizza owned by system user (admin)
+
+FORBIDDEN_UPDATE=$(curl -s -w "\n%{http_code}" -X PUT $BASE_URL/api/v1/pizzas/$ADMIN_PIZZA_ID \
+  -H "Authorization: Bearer $USER_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"name\": \"Hacked Pizza\",
+    \"price\": 0.01
+  }" 2>&1)
+
+FORBIDDEN_HTTP_CODE=$(echo "$FORBIDDEN_UPDATE" | tail -n1)
+if [ "$FORBIDDEN_HTTP_CODE" != "403" ]; then
+    test_fail "USER was able to update admin's pizza (security breach! Got HTTP $FORBIDDEN_HTTP_CODE)"
+fi
+test_pass "USER correctly denied access to admin's pizza (403)"
+
+# User deletes own pizza (204 No Content expected)
+test_info "USER deleting own pizza #$USER_PIZZA_ID..."
+USER_DELETE=$(curl -s -w "\n%{http_code}" -X DELETE $BASE_URL/api/v1/pizzas/$USER_PIZZA_ID \
+  -H "Authorization: Bearer $USER_TOKEN")
+
+DELETE_HTTP_CODE=$(echo "$USER_DELETE" | tail -n1)
+if [ "$DELETE_HTTP_CODE" != "204" ] && [ "$DELETE_HTTP_CODE" != "200" ]; then
+    test_fail "USER failed to delete own pizza (HTTP $DELETE_HTTP_CODE)"
+fi
+test_pass "USER successfully deleted own pizza"
+
+# Verify deletion
+if curl -sf $BASE_URL/api/v1/public/pizzas/$USER_PIZZA_ID > /dev/null 2>&1; then
+    test_fail "USER pizza still exists after deletion"
+fi
+test_pass "USER pizza deletion verified"
 
 # ============================================================================
 # CLEANUP
@@ -379,6 +472,10 @@ echo -e "  ${GREEN}✓${NC} Get specific pizza by ID"
 echo -e "  ${GREEN}✓${NC} Update pizza"
 echo -e "  ${GREEN}✓${NC} Verify pizza update"
 echo -e "  ${GREEN}✓${NC} Delete pizza"
+echo -e "  ${GREEN}✓${NC} USER role: create pizza"
+echo -e "  ${GREEN}✓${NC} USER role: update own pizza"
+echo -e "  ${GREEN}✓${NC} USER role: denied update admin's pizza (403)"
+echo -e "  ${GREEN}✓${NC} USER role: delete own pizza"
 echo ""
 echo -e "${CYAN}Server logs available at: /tmp/pizza-api.log${NC}"
 echo ""

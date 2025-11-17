@@ -78,7 +78,7 @@ curl -X POST http://localhost:8080/api/v1/oauth/token \
 **5. Create a pizza:**
 ```bash
 TOKEN="your_access_token"
-curl -X POST http://localhost:8080/api/v1/protected/admin/pizzas \
+curl -X POST http://localhost:8080/api/v1/pizzas \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -88,6 +88,8 @@ curl -X POST http://localhost:8080/api/v1/protected/admin/pizzas \
     "description": "Classic Italian pizza"
   }'
 ```
+
+> **Note:** Users can only update/delete their own pizzas. Admins can modify any pizza.
 
 **6. Explore interactive API docs:**
 
@@ -239,7 +241,7 @@ curl -X POST http://localhost:8080/api/v1/oauth/token \
 Include in `Authorization` header:
 ```bash
 curl -H "Authorization: Bearer <token>" \
-  http://localhost:8080/api/v1/protected/admin/pizzas
+  http://localhost:8080/api/v1/pizzas
 ```
 
 ### JWT Token Details
@@ -266,14 +268,26 @@ Tokens contain these claims:
 | `GET` | `/api/v1/public/pizzas` | List all pizzas |
 | `GET` | `/api/v1/public/pizzas/:id` | Get specific pizza |
 
-### Protected Endpoints (Requires Admin Role)
+### Protected Endpoints (Requires Authentication)
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/api/v1/oauth/token` | Get OAuth access token |
-| `POST` | `/api/v1/protected/admin/pizzas` | Create pizza |
-| `PUT` | `/api/v1/protected/admin/pizzas/:id` | Update pizza |
-| `DELETE` | `/api/v1/protected/admin/pizzas/:id` | Delete pizza |
+#### Pizza Operations (USER/ADMIN roles)
+
+| Method | Endpoint | Auth | Role | Description |
+|--------|----------|------|------|-------------|
+| `POST` | `/api/v1/oauth/token` | None | - | Get OAuth access token |
+| `POST` | `/api/v1/pizzas` | Bearer | USER/ADMIN | Create pizza |
+| `PUT` | `/api/v1/pizzas/:id` | Bearer | USER/ADMIN | Update pizza (own or admin) |
+| `DELETE` | `/api/v1/pizzas/:id` | Bearer | USER/ADMIN | Delete pizza (own or admin) |
+
+> **Ownership Rules:** Users can only modify their own pizzas. Admins can modify any pizza.
+
+#### OAuth Client Management (ADMIN only)
+
+| Method | Endpoint | Auth | Role | Description |
+|--------|----------|------|------|-------------|
+| `POST` | `/api/v1/clients` | Bearer | ADMIN | Create OAuth client |
+| `GET` | `/api/v1/clients` | Bearer | ADMIN | List OAuth clients |
+| `DELETE` | `/api/v1/clients/:id` | Bearer | ADMIN | Delete OAuth client |
 
 ### Query Parameters (Future Phase 3)
 

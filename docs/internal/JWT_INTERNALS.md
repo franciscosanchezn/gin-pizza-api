@@ -239,7 +239,7 @@ When a client creates a pizza, the `uid` claim from their JWT is used to populat
 
 3. **Client creates pizza:**
    ```bash
-   POST /api/v1/protected/admin/pizzas
+   POST /api/v1/pizzas
    Authorization: Bearer <token>
    Body: {"name": "Margherita", "price": 10.99}
    ```

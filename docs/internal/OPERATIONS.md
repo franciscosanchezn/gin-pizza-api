@@ -450,7 +450,7 @@ readinessProbe:
   "timestamp": "2025-11-11T10:30:00Z",
   "level": "info",
   "method": "POST",
-  "path": "/api/v1/protected/admin/pizzas",
+  "path": "/api/v1/pizzas",
   "status": 201,
   "latency_ms": 15,
   "client_id": "terraform-client"
