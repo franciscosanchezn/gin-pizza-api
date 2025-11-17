@@ -9,6 +9,7 @@ import (
 	"github.com/franciscosanchezn/gin-pizza-api/internal/auth"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/config"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/controllers"
+	"github.com/franciscosanchezn/gin-pizza-api/internal/database"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/middleware"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/models"
 	"github.com/franciscosanchezn/gin-pizza-api/internal/services"
@@ -17,7 +18,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
-	"gorm.io/driver/sqlite"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -54,6 +55,9 @@ func main() {
 
 	// Initialize database connection
 	setupDatabase()
+
+	// Bootstrap OAuth client for K8s/production deployments
+	bootstrapOAuthClient()
 
 	// Initialize services and controllers
 	pizzaService = services.NewPizzaService(db)
@@ -110,11 +114,25 @@ func loadConfig() *config.Config {
 
 // setupDatabase initializes the database connection and returns a gorm.DB instance
 func setupDatabase() *gorm.DB {
-	// Database connection logic here
-	// This is a placeholder, actual implementation will depend on the database being used
+	// Build database configuration from app config
+	dbConfig := database.DatabaseConfig{
+		Driver:   configuration.DBDriver,
+		Host:     configuration.DBHost,
+		Port:     configuration.DBPort,
+		User:     configuration.DBUser,
+		Password: configuration.DBPassword,
+		Name:     configuration.DBName,
+		SSLMode:  configuration.DBSSLMode,
+		Path:     configuration.DBPath,
+	}
+
+	// Initialize database connection
 	var err error
-	db, err = gorm.Open(sqlite.Open("test.sqlite"), &gorm.Config{})
+	db, err = database.InitDatabase(dbConfig)
 	checkPanicErr(err)
+
+	log.Infof("Database initialized: driver=%s", configuration.DBDriver)
+
 	// Migrate the schema
 	if err := db.AutoMigrate(&models.Pizza{}); err != nil {
 		log.Fatalf("Failed to migrate Pizza schema: %v", err)
@@ -138,6 +156,81 @@ func setupDatabase() *gorm.DB {
 		log.Info("Database already seeded with initial data")
 	}
 	return db
+}
+
+// bootstrapOAuthClient creates an admin OAuth client on first startup if it doesn't exist
+// This enables automatic credential provisioning for K8s deployments
+func bootstrapOAuthClient() {
+	log.Info("Checking OAuth client bootstrap requirements")
+
+	clientID := configuration.BootstrapClientID
+
+	// Check if the specific bootstrap client already exists
+	var existing models.OAuthClient
+	if err := db.Where("id = ?", clientID).First(&existing).Error; err == nil {
+		log.WithField("client_id", clientID).Info("Bootstrap OAuth client already exists, skipping")
+		return
+	}
+
+	// Bootstrap client doesn't exist, create it
+	log.WithField("client_id", clientID).Info("Creating bootstrap OAuth client")
+
+	// Ensure system user exists
+	systemUser := models.User{
+		Email: "system@pizza.com",
+		Name:  "System User",
+		Role:  "admin",
+	}
+
+	var existingUser models.User
+	if err := db.Where("email = ?", systemUser.Email).First(&existingUser).Error; err != nil {
+		// System user doesn't exist, create it
+		if err := db.Create(&systemUser).Error; err != nil {
+			log.WithError(err).Error("Failed to create system user for OAuth bootstrap")
+			return
+		}
+		log.Info("✓ System user created for OAuth bootstrap")
+	} else {
+		systemUser.ID = existingUser.ID
+		log.Info("Using existing system user for OAuth bootstrap")
+	}
+
+	// Get client secret from configuration
+	clientSecret := configuration.BootstrapClientSecret
+
+	// Generate random secret if not provided
+	if clientSecret == "" {
+		clientSecret = fmt.Sprintf("bootstrap-secret-%d", time.Now().UnixNano())
+		log.Warn("No BOOTSTRAP_CLIENT_SECRET provided, generated random secret")
+	}
+
+	// Hash the client secret using bcrypt
+	hashedSecret, err := bcrypt.GenerateFromPassword([]byte(clientSecret), bcrypt.DefaultCost)
+	if err != nil {
+		log.WithError(err).Error("Failed to hash bootstrap client secret")
+		return
+	}
+
+	oauthClient := models.OAuthClient{
+		ID:     clientID,
+		Secret: string(hashedSecret),
+		UserID: systemUser.ID,
+		Scopes: "read write",
+	}
+
+	if err := db.Create(&oauthClient).Error; err != nil {
+		log.WithError(err).Error("Failed to create bootstrap OAuth client")
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"client_id": clientID,
+		"user_id":   systemUser.ID,
+		"scopes":    oauthClient.Scopes,
+	}).Info("✓ Bootstrap OAuth client created successfully")
+
+	// Security note: Do NOT log the client secret in production
+	log.Warn("IMPORTANT: Save the bootstrap client credentials securely")
 }
 
 // seedDatabase seeds the database with initial data
@@ -193,7 +286,49 @@ func seedDatabase() {
 	for _, pizza := range pizzas {
 		db.Create(&pizza)
 	}
+
+	// Create development OAuth client for local testing
+	createDevOAuthClient(systemUser.ID)
+
 	log.Info("Database seeded successfully")
+}
+
+// createDevOAuthClient creates a dev-client for local development and testing
+func createDevOAuthClient(userID uint) {
+	clientID := "dev-client"
+	clientSecret := "dev-secret-123"
+
+	// Check if dev-client already exists
+	var existing models.OAuthClient
+	if err := db.Where("id = ?", clientID).First(&existing).Error; err == nil {
+		log.Info("Development OAuth client already exists")
+		return
+	}
+
+	// Create dev-client
+	hashedSecret, err := bcrypt.GenerateFromPassword([]byte(clientSecret), bcrypt.DefaultCost)
+	if err != nil {
+		log.WithError(err).Error("Failed to hash dev client secret")
+		return
+	}
+
+	devClient := models.OAuthClient{
+		ID:     clientID,
+		Secret: string(hashedSecret),
+		Name:   "Development Client",
+		UserID: userID,
+		Scopes: "read write",
+	}
+
+	if err := db.Create(&devClient).Error; err != nil {
+		log.WithError(err).Error("Failed to create dev OAuth client")
+		return
+	}
+
+	log.WithFields(log.Fields{
+		"client_id":     clientID,
+		"client_secret": clientSecret,
+	}).Info("✓ Development OAuth client created (for testing only)")
 }
 
 // setupRouter initializes the Gin router and sets up the routes
@@ -264,6 +399,7 @@ type HealthResponse struct {
 	Status    string `json:"status" example:"healthy"`
 	Version   string `json:"version" example:"1.0.0"`
 	Database  string `json:"database" example:"connected"`
+	DBDriver  string `json:"db_driver" example:"sqlite"`
 	Timestamp string `json:"timestamp" example:"2025-11-10T12:34:56Z"`
 }
 
@@ -289,6 +425,7 @@ func healthCheckHandler(c *gin.Context) {
 		Status:    "healthy",
 		Version:   APIVersion,
 		Database:  dbStatus,
+		DBDriver:  configuration.DBDriver,
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 	}
 

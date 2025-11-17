@@ -10,6 +10,16 @@ CLIENT_ID="${CLIENT_ID:-dev-client}"
 CLIENT_SECRET="${CLIENT_SECRET:-dev-secret-123}"
 SERVER_STARTUP_WAIT=3
 
+# Database Configuration
+DB_DRIVER="${DB_DRIVER:-sqlite}"
+DB_HOST="${DB_HOST:-localhost}"
+DB_PORT="${DB_PORT:-5432}"
+DB_USER="${DB_USER:-postgres}"
+DB_PASSWORD="${DB_PASSWORD}"
+DB_NAME="${DB_NAME:-pizza_api}"
+DB_SSLMODE="${DB_SSLMODE:-disable}"
+DB_PATH="${DB_PATH:-test.sqlite}"
+
 # Colors
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -25,6 +35,11 @@ echo ""
 echo -e "${CYAN}${SEPARATOR}${NC}"
 echo -e "${CYAN}Pizza API - Comprehensive Test Suite${NC}"
 echo -e "${CYAN}${SEPARATOR}${NC}"
+echo ""
+echo -e "${CYAN}Database Driver: ${YELLOW}${DB_DRIVER}${NC}"
+if [ "$DB_DRIVER" = "postgres" ] || [ "$DB_DRIVER" = "postgresql" ]; then
+    echo -e "${CYAN}PostgreSQL: ${YELLOW}${DB_HOST}:${DB_PORT}/${DB_NAME}${NC}"
+fi
 echo ""
 
 # Function to print section headers
@@ -70,6 +85,20 @@ test_info "Stopping any running pizza-api servers..."
 pkill -f pizza-api 2>/dev/null || true
 sleep 1
 
+# Clean up test database
+test_info "Cleaning up test database..."
+if [ "$DB_DRIVER" = "sqlite" ]; then
+    rm -f "$DB_PATH"
+    test_pass "SQLite database cleaned: $DB_PATH"
+elif [ "$DB_DRIVER" = "postgres" ] || [ "$DB_DRIVER" = "postgresql" ]; then
+    if [ -z "$DB_PASSWORD" ]; then
+        test_fail "DB_PASSWORD environment variable is required for PostgreSQL testing"
+    fi
+    # Note: Database cleanup for PostgreSQL should be handled by the application
+    # or a separate setup script. For now, we'll let the app recreate tables.
+    test_pass "PostgreSQL will use database: $DB_NAME"
+fi
+
 # Check if port is free
 if lsof -Pi :8080 -sTCP:LISTEN -t >/dev/null 2>&1; then
     test_fail "Port 8080 is still in use. Please free the port manually."
@@ -83,8 +112,18 @@ if go build -o bin/pizza-api cmd/main.go 2>&1 | grep -qi "error"; then
 fi
 test_pass "Application built successfully"
 
+# Export database configuration
+export DB_DRIVER
+export DB_HOST
+export DB_PORT
+export DB_USER
+export DB_PASSWORD
+export DB_NAME
+export DB_SSLMODE
+export DB_PATH
+
 # Start the server in background
-test_info "Starting pizza-api server..."
+test_info "Starting pizza-api server with DB_DRIVER=$DB_DRIVER..."
 nohup ./bin/pizza-api > /tmp/pizza-api.log 2>&1 &
 SERVER_PID=$!
 test_info "Server PID: $SERVER_PID"

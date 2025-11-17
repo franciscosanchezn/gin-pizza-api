@@ -23,7 +23,7 @@ A REST API built with Go and Gin for pizza management with OAuth2 Client Credent
 - **OAuth2 Client Credentials** authentication (machine-to-machine)
 - **Role-based access control** (admin required for mutations)
 - **Swagger/OpenAPI documentation** (interactive UI)
-- **SQLite database** with GORM (auto-migration and seeding)
+- **Dual-database support**: SQLite for local development, PostgreSQL for production (zero-code switching via environment variables)
 - **JWT-based stateless tokens** (1 hour expiration)
 - **Creator tracking** for resource ownership
 - **Terraform provider ready** (idempotent operations, stable API contract)
@@ -94,6 +94,46 @@ curl -X POST http://localhost:8080/api/v1/pizzas \
 **6. Explore interactive API docs:**
 
 Open http://localhost:8080/swagger/index.html
+
+---
+
+### Using PostgreSQL Locally
+
+By default, the API uses SQLite for development. To use PostgreSQL instead:
+
+**1. Start PostgreSQL with Docker:**
+```bash
+docker run -d --name pizza-postgres \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=pizza_api \
+  -p 5432:5432 \
+  postgres:16-alpine
+```
+
+**2. Set environment variables:**
+```bash
+export DB_DRIVER=postgres
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_USER=postgres
+export DB_PASSWORD=postgres
+export DB_NAME=pizza_api
+export DB_SSLMODE=disable
+```
+
+**3. Start the server:**
+```bash
+go run cmd/main.go
+```
+
+The application automatically creates tables and seeds data on startup. Use the same API endpoints - database choice is transparent.
+
+**4. Stop PostgreSQL when done:**
+```bash
+docker stop pizza-postgres && docker rm pizza-postgres
+```
+
+> **Note:** See [DATABASE_ARCHITECTURE.md](docs/internal/DATABASE_ARCHITECTURE.md) for detailed documentation on dual-database support, connection pooling, Kubernetes deployment, and migration strategies.
 
 ---
 
