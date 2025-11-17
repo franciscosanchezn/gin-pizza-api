@@ -137,19 +137,86 @@ Authorization: Bearer eyJhbGciOiJIUzUxMiIsInR5cCI6IkpXVCJ9...
 
 ---
 
+## Role-Based Authorization
+
+### User Roles
+
+The API supports two roles with different permission levels:
+
+| Role | Description | Capabilities |
+|------|-------------|--------------|
+| **USER** | Regular user | Full CRUD on own pizzas, read all pizzas |
+| **ADMIN** | Administrator | Full CRUD on all pizzas, OAuth client management |
+
+### Pizza Operations Authorization
+
+#### USER Role
+
+- **Scope:** Full CRUD on own pizzas only
+- **CREATE:** Pizza ownership automatically set to USER's `userID`
+- **READ:** Can view all pizzas (public endpoints)
+- **UPDATE:** Can only update pizzas where `created_by == userID`
+- **DELETE:** Can only delete pizzas where `created_by == userID`
+- **Forbidden:** Modifying other users' pizzas returns `403 Forbidden`
+
+**Example:**
+```json
+// User attempts to update admin's pizza
+PUT /api/v1/pizzas/1
+Authorization: Bearer <user_token>
+
+// Response: 403 Forbidden
+{
+  "error": "You can only update your own pizzas",
+  "pizza_owner": 1,
+  "your_id": 5
+}
+```
+
+#### ADMIN Role
+
+- **Scope:** Full CRUD on all pizzas
+- **Unrestricted:** Can update/delete any pizza regardless of `created_by`
+- **Client Management:** Can create/list/delete OAuth clients (USER cannot)
+
+### Authorization Flow
+
+1. JWT extracted from `Authorization: Bearer <token>` header
+2. Middleware validates token signature and expiration
+3. Claims (`userID`, `userRole`) set in request context
+4. Controller checks ownership: `created_by == userID || userRole == "admin"`
+5. Returns `403 Forbidden` with ownership details if unauthorized
+
+### Permission Matrix
+
+| Operation | Endpoint | USER | ADMIN |
+|-----------|----------|------|-------|
+| List all pizzas | `GET /api/v1/public/pizzas` | ✅ | ✅ |
+| Get pizza by ID | `GET /api/v1/public/pizzas/:id` | ✅ | ✅ |
+| Create pizza | `POST /api/v1/pizzas` | ✅ Own | ✅ Any |
+| Update own pizza | `PUT /api/v1/pizzas/:id` | ✅ Own | ✅ Any |
+| Update other's pizza | `PUT /api/v1/pizzas/:id` | ❌ 403 | ✅ Any |
+| Delete own pizza | `DELETE /api/v1/pizzas/:id` | ✅ Own | ✅ Any |
+| Delete other's pizza | `DELETE /api/v1/pizzas/:id` | ❌ 403 | ✅ Any |
+| Create OAuth client | `POST /api/v1/clients` | ❌ 403 | ✅ |
+| List OAuth clients | `GET /api/v1/clients` | ❌ 403 | ✅ |
+| Delete OAuth client | `DELETE /api/v1/clients/:id` | ❌ 403 | ✅ |
+
+---
+
 ## Idempotency Guarantees
 
 ### Per-Endpoint Idempotency
 
 | Endpoint | Method | Idempotent? | Details |
 |----------|--------|-------------|---------|
-| **Create Pizza** | `POST /api/v1/protected/admin/pizzas` | ❌ **No** | Multiple identical requests create multiple pizzas. Provider must track state to avoid duplicates. |
+| **Create Pizza** | `POST /api/v1/pizzas` | ❌ **No** | Multiple identical requests create multiple pizzas. Provider must track state to avoid duplicates. |
 | **Get Pizza** | `GET /api/v1/public/pizzas/:id` | ✅ **Yes** | Naturally idempotent. Safe to retry. |
 | **List Pizzas** | `GET /api/v1/public/pizzas` | ✅ **Yes** | Returns current state. Safe to retry. |
-| **Update Pizza** | `PUT /api/v1/protected/admin/pizzas/:id` | ✅ **Yes** | Applying same update multiple times is idempotent. Safe to retry. |
-| **Delete Pizza** | `DELETE /api/v1/protected/admin/pizzas/:id` | ✅ **Yes** | First delete succeeds (200), subsequent returns 404. Safe to retry. |
-| **Create OAuth Client** | `POST /api/v1/protected/admin/clients` | ❌ **No** | Multiple requests create multiple clients. No duplicate detection. |
-| **Delete OAuth Client** | `DELETE /api/v1/protected/admin/clients/:id` | ✅ **Yes** | First delete succeeds, subsequent returns 404. Safe to retry. |
+| **Update Pizza** | `PUT /api/v1/pizzas/:id` | ✅ **Yes** | Applying same update multiple times is idempotent. Safe to retry. |
+| **Delete Pizza** | `DELETE /api/v1/pizzas/:id` | ✅ **Yes** | First delete succeeds (200), subsequent returns 404. Safe to retry. |
+| **Create OAuth Client** | `POST /api/v1/clients` | ❌ **No** | Multiple requests create multiple clients. No duplicate detection. |
+| **Delete OAuth Client** | `DELETE /api/v1/clients/:id` | ✅ **Yes** | First delete succeeds, subsequent returns 404. Safe to retry. |
 
 ### Implications for Terraform Providers
 

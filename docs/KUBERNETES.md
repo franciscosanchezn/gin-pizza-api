@@ -171,7 +171,7 @@ TOKEN=$(curl -sk -X POST https://pizza-api.local/api/v1/oauth/token \
 echo "Token: $TOKEN"
 
 # Create a pizza using the token
-curl -k -X POST https://pizza-api.local/api/v1/protected/admin/pizzas \
+curl -k -X POST https://pizza-api.local/api/v1/pizzas \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{

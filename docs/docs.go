@@ -15,7 +15,7 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/api/v1/protected/admin/pizzas": {
+        "/api/v1/pizzas": {
             "post": {
                 "security": [
                     {
@@ -72,7 +72,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/api/v1/protected/admin/pizzas/{id}": {
+        "/api/v1/pizzas/{id}": {
             "put": {
                 "security": [
                     {
@@ -380,7 +380,7 @@ const docTemplate = `{
         },
         "/api/v1/public/pizzas": {
             "get": {
-                "description": "Get a list of all pizzas",
+                "description": "Get a list of all pizzas with optional filtering",
                 "consumes": [
                     "application/json"
                 ],
@@ -391,6 +391,20 @@ const docTemplate = `{
                     "pizzas"
                 ],
                 "summary": "Get all pizzas",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by creator user ID",
+                        "name": "created_by",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by pizza name (partial match)",
+                        "name": "name",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -398,6 +412,15 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/models.Pizza"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
                             }
                         }
                     },
@@ -465,7 +488,7 @@ const docTemplate = `{
         },
         "/health": {
             "get": {
-                "description": "Check if the service is running",
+                "description": "Check if the service is running and database connectivity",
                 "consumes": [
                     "application/json"
                 ],
@@ -480,10 +503,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "$ref": "#/definitions/main.HealthResponse"
                         }
                     }
                 }
@@ -568,6 +588,27 @@ const docTemplate = `{
         }
     },
     "definitions": {
+        "main.HealthResponse": {
+            "type": "object",
+            "properties": {
+                "database": {
+                    "type": "string",
+                    "example": "connected"
+                },
+                "status": {
+                    "type": "string",
+                    "example": "healthy"
+                },
+                "timestamp": {
+                    "type": "string",
+                    "example": "2025-11-10T12:34:56Z"
+                },
+                "version": {
+                    "type": "string",
+                    "example": "1.0.0"
+                }
+            }
+        },
         "models.Pizza": {
             "type": "object",
             "properties": {

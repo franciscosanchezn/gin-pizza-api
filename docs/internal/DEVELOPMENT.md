@@ -270,7 +270,7 @@ Use these annotations in controller functions to document endpoints:
 // @Failure 401 {object} map[string]string
 // @Failure 403 {object} map[string]string
 // @Security BearerAuth
-// @Router /api/v1/protected/admin/pizzas [post]
+// @Router /api/v1/pizzas [post]
 func (c *controller) CreatePizza(ctx *gin.Context) {
     // Implementation
 }

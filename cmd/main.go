@@ -166,6 +166,25 @@ func seedDatabase() {
 		log.Infof("✓ System user created: system@pizza.com")
 	}
 
+	// Create a regular user for testing
+	regularUser := models.User{
+		Email: "user@pizza.com",
+		Name:  "Regular User",
+		Role:  "user",
+	}
+
+	var existingRegularUser models.User
+	if err := db.Where("email = ?", regularUser.Email).First(&existingRegularUser).Error; err == nil {
+		regularUser.ID = existingRegularUser.ID
+		log.Info("Regular user already exists, using existing ID")
+	} else {
+		if err := db.Create(&regularUser).Error; err != nil {
+			log.Errorf("Failed to create regular user: %v", err)
+			return
+		}
+		log.Infof("✓ Regular user created: user@pizza.com")
+	}
+
 	pizzas := []models.Pizza{
 		{Name: "Margherita", Price: 10.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Basil"}, CreatedBy: systemUser.ID},
 		{Name: "Pepperoni", Price: 12.99, Ingredients: []string{"Tomato Sauce", "Mozzarella", "Pepperoni"}, CreatedBy: systemUser.ID},
@@ -216,26 +235,23 @@ func setupRoutes(router *gin.Engine) {
 			oauthRoutes.POST("/token", oauthService.HandleToken)
 		}
 
-		// Protected routes (requires JWT authentication)
-		// This group will use the JWTAuth middleware
-		// and will require a valid JWT token to access
-		protectedApi := v1.Group("/protected")
-		protectedApi.Use(middleware.OAuth2Auth([]byte(configuration.JWTSecret)))
+		// Pizza CRUD - requires authentication, ownership enforced in controller
+		pizzaApi := v1.Group("/pizzas")
+		pizzaApi.Use(middleware.OAuth2Auth([]byte(configuration.JWTSecret)))
 		{
-			adminApi := protectedApi.Group("/admin")
-			adminApi.Use(middleware.RequireRole("admin"))
-			{
-				// Pizza operations
-				adminApi.POST("/pizzas", pizzaController.CreatePizza)
-				adminApi.PUT("/pizzas/:id", pizzaController.UpdatePizza)
-				adminApi.DELETE("/pizzas/:id", pizzaController.DeletePizza)
+			pizzaApi.POST("", pizzaController.CreatePizza)
+			pizzaApi.PUT("/:id", pizzaController.UpdatePizza)
+			pizzaApi.DELETE("/:id", pizzaController.DeletePizza)
+		}
 
-				// OAuth2 Client Management - admin only
-				adminApi.POST("/clients", clientController.CreateClient)
-				adminApi.GET("/clients", clientController.ListClients)
-				adminApi.DELETE("/clients/:id", clientController.DeleteClient)
-			}
-
+		// OAuth client management - admin only
+		clientApi := v1.Group("/clients")
+		clientApi.Use(middleware.OAuth2Auth([]byte(configuration.JWTSecret)))
+		clientApi.Use(middleware.RequireRole("admin"))
+		{
+			clientApi.POST("", clientController.CreateClient)
+			clientApi.GET("", clientController.ListClients)
+			clientApi.DELETE("/:id", clientController.DeleteClient)
 		}
 	}
 

@@ -99,7 +99,7 @@ func (c *controller) GetPizzaByID(ctx *gin.Context) {
 // @Failure 400 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
-// @Router /api/v1/protected/admin/pizzas [post]
+// @Router /api/v1/pizzas [post]
 func (c *controller) CreatePizza(ctx *gin.Context) {
 	var pizza models.Pizza
 	if err := ctx.ShouldBindJSON(&pizza); err != nil {
@@ -151,7 +151,7 @@ func (c *controller) CreatePizza(ctx *gin.Context) {
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
-// @Router /api/v1/protected/admin/pizzas/{id} [put]
+// @Router /api/v1/pizzas/{id} [put]
 func (c *controller) UpdatePizza(ctx *gin.Context) {
 	id, existId := ctx.Params.Get("id")
 	if !existId {
@@ -235,7 +235,7 @@ func (c *controller) UpdatePizza(ctx *gin.Context) {
 // @Failure 404 {object} map[string]string
 // @Failure 500 {object} map[string]string
 // @Security BearerAuth
-// @Router /api/v1/protected/admin/pizzas/{id} [delete]
+// @Router /api/v1/pizzas/{id} [delete]
 func (c *controller) DeletePizza(ctx *gin.Context) {
 	id, existId := ctx.Params.Get("id")
 	if !existId {
