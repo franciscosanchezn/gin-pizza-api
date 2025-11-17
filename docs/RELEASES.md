@@ -8,9 +8,9 @@ When changes are merged to `main`, the workflow automatically:
 
 1. Analyzes commits using conventional commit format
 2. Determines the next version (MAJOR.MINOR.PATCH)
-3. Generates a changelog
-4. Creates a GitHub release with assets
-5. Updates CHANGELOG.md
+3. Generates release notes with categorized commits
+4. Creates a GitHub release with version tag and assets
+5. Uploads binary and Docker image to the release
 
 **No manual version management required!**
 
@@ -96,8 +96,8 @@ Each release automatically includes:
 2. **Docker Image** (`pizza-api-docker-vX.Y.Z.tar.gz`)
    - Compressed Docker image tarball
 
-3. **CHANGELOG.md**
-   - Automatically generated changelog with categorized commits
+3. **Release Notes**
+   - Automatically generated with categorized commits and emojis
 
 ## Using Released Versions
 
